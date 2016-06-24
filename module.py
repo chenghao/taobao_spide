@@ -1,6 +1,7 @@
 # coding:utf-8
 __author__ = "chenghao"
-
+from gevent import monkey
+monkey.patch_all()
 from peewee import Model, PrimaryKeyField, CharField, FloatField, IntegerField
 from playhouse.pool import PooledMySQLDatabase
 from conf import mysql_conf
