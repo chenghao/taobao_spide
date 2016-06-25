@@ -5,17 +5,21 @@ from gevent import monkey
 monkey.patch_all()
 import gevent
 from gevent.pool import Pool
-from ghost import Ghost
-from lxml.html import fromstring
+import lxml.etree as etree
 from conf import logger
+import spynner
+import re, hashlib
+from module import *
 
 pool = Pool(1000)
+browser = spynner.Browser()
+browser.hide()
 
 
 def main():
 	# 童装女 夏季
 	urls = [
-		"https://s.taobao.com/search?initiative_id=staobaoz_20160623&q=%E7%AB%A5%E8%A3%85%E5%A5%B3+%E5%A4%8F%E5%AD%A3&suggest=0_1&_input_charset=utf-8&wq=%E7%AB%A5%E8%A3%85&suggest_query=%E7%AB%A5%E8%A3%85&source=suggest&bcoffset=-8&ntoffset=-8&p4ppushleft=1%2C48"
+		"https://s.taobao.com/search?initiative_id=staobaoz_20160625&q=童装女 夏季&suggest=history_1&_input_charset=utf-8&wq=&suggest_query=&source=suggest"
 	]
 	pool.map(build_page, urls)
 
@@ -30,7 +34,7 @@ def build_page(url):
 		_url = url + "&s=" + str(i * 44)
 		print _url
 		pool.spawn(req_url, _url)
-		gevent.sleep(10)
+		gevent.sleep(25)
 
 
 def req_url(url):
@@ -40,11 +44,7 @@ def req_url(url):
 	:return:
 	"""
 	try:
-		ghost = Ghost()
-		with ghost.start() as session:
-			page, extra_resources = session.open(url)
-			if page.http_status == 200:
-				pool.spawn(parse_html, page.content)
+		browser.load(unicode(url, "utf-8"), load_timeout=60, wait_callback=parse_html, tries=6)
 	except Exception, e:
 		logger.error("请求url异常: " + str(e), exc_info=True)
 
@@ -55,7 +55,90 @@ def parse_html(content):
 	:param content:
 	:return:
 	"""
-	pass
+	h = content.html
+	if len(h) > 40:
+		html = etree.HTML(h)
+		items = html.xpath(u'//*[@id="mainsrp-itemlist"]//div[@class="items g-clearfix"]/div')
+		pool.map(get_field, items)
+
+
+def get_field(item):
+	"""
+	获取字段
+	:param item:
+	:return:
+	"""
+	try:
+		div = item.xpath(u'div[@class="pic-box J_MouseEneterLeave J_PicBox"]//*')[0]
+		url = div.xpath(u'div[@class="pic"]//a')[0].attrib.get("href")  # url地址
+		url = is_startswith(url)
+		url_md5 = hashlib.md5(url).hexdigest()
+		bo = exist_by_urlmd5(url_md5)
+		if bo is False:  # 数据库中不存在才新增
+			img = div.xpath(u'div[@class="pic"]//img')[0].attrib
+			cover = img.get("src") if img.get("src") else img.get("data-src")  # 封面
+			cover = is_startswith(cover)
+			similars = div.xpath(u'div[@class="similars"]//a')
+			if similars:
+				same_style_url = similars[0].attrib.get("href")  # 同款url
+				if same_style_url is None:
+					same_style_url = ""
+				else:
+					same_style_url = "https://s.taobao.com" + same_style_url
+
+				if len(similars) > 1:
+					similar_url = similars[1].attrib.get("href")
+					if similar_url is None:
+						similar_url = ""
+					else:
+						similar_url = "https://s.taobao.com" + similar_url  # 相似url
+				else:
+					similar_url = ""
+			else:
+				same_style_url = ""
+				similar_url = ""
+
+			div = item.xpath(u'div[@class="ctx-box J_MouseEneterLeave J_IconMoreNew"]/div')
+			price = div[0].xpath(u'div[@class="price g_price g_price-highlight"]/strong')[0].text  # 商品价格
+			sale_num = div[0].xpath(u'div[@class="deal-cnt"]')[0].text
+			if sale_num is None:
+				sale_num = 0
+			else:
+				sale_num = "".join([s for s in sale_num if s.isdigit()])  # 商品购买人数
+			title_a = etree.tounicode(div[1].xpath(u'a')[0])  # 商品名称
+			p = re.compile('<[^>]+>')  # 去掉html标签， 只留字符
+			title = p.sub("", title_a).strip()
+			shop_name = div[2].xpath(u'div/a/span')[1].text  # 商铺名称
+			addr = div[2].xpath(u'div')[1].text  # 商铺地址
+			tianmao = div[3].xpath(u'div/ul/li//span[@class="icon-service-tianmao"]')
+			is_tmall = 1 if tianmao else 0  # 是否天猫商店
+
+			data = {"url": url, "title": title, "cover": cover, "price": price, "sale_num": sale_num,
+			        "shop_name": shop_name, "addr": addr, "is_tmall": is_tmall, "url_md5": url_md5,
+			        "same_style_url": same_style_url, "similar_url": similar_url}
+			pool.spawn(save, data)
+
+	except Exception, e:
+		logger.error("获取字段异常: " + str(e), exc_info=True)
+
+
+def save(data):
+	"""
+	保存数据库
+	:param data:
+	:return:
+	"""
+	try:
+		save_tb(data)
+	except Exception, e:
+		logger.error("保存到数据库异常: " + str(e), exc_info=True)
+
+
+def is_startswith(s):
+	if s.startswith("http") is False:
+		return "https:" + s;
+	else:
+		return s
 
 
 if __name__ == "__main__":

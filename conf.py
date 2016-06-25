@@ -26,5 +26,7 @@ def get_logger():
 	# 设置日志等级
 	logger.setLevel(logging.DEBUG)
 
+	return logger
+
 
 logger = get_logger()

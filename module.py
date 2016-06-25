@@ -1,6 +1,7 @@
 # coding:utf-8
 __author__ = "chenghao"
 from gevent import monkey
+
 monkey.patch_all()
 from peewee import Model, PrimaryKeyField, CharField, FloatField, IntegerField
 from playhouse.pool import PooledMySQLDatabase
@@ -18,21 +19,31 @@ class BaseModel(Model):
 		database = database
 
 
-class GoodsModel(BaseModel):
-	url = CharField(unique=True)  # 商品url
+class Goods(BaseModel):
+	url = CharField(unique=True, max_length=800)  # 商品url
 	title = CharField()  # 商品标题
-	cover = CharField()  # 商品封面
+	cover = CharField(max_length=500)  # 商品封面
 	price = FloatField()  # 商品价格
 	sale_num = IntegerField()  # 卖出人数
 	shop_name = CharField(max_length=50)  # 商铺名称
 	addr = CharField()  # 地址
 	is_tmall = IntegerField()  # 是不是天猫
-	same_style_url = CharField()  # 同款url
-	similar_url = CharField()  # 相似url
-	type = CharField()  # 商品类型
+	same_style_url = CharField(max_length=500)  # 同款url
+	similar_url = CharField(max_length=500)  # 相似url
 	url_md5 = CharField(32)
 
 	class Meta:
 		db_table = "goods"
 
 
+def exist_by_urlmd5(url_md5):
+	result = Goods.select(Goods.pid).where(Goods.url_md5 == url_md5)
+	return result.exists()
+
+
+def save_tb(data):
+	Goods.insert(data).execute()
+
+
+if __name__ == '__main__':
+	print exist_by_urlmd5("123")
