@@ -1,5 +1,10 @@
 # coding:utf-8
 __author__ = "chenghao"
+import sys
+
+reload(sys)
+sys.setdefaultencoding('utf-8')
+
 from gevent import monkey
 
 monkey.patch_all()
@@ -7,13 +12,12 @@ import gevent
 from gevent.pool import Pool
 import lxml.etree as etree
 from conf import logger
-import spynner
 import re, hashlib
 from module import *
+#import spynner
+from selenium import webdriver
 
 pool = Pool(1000)
-browser = spynner.Browser()
-browser.hide()
 
 
 def main():
@@ -30,21 +34,33 @@ def build_page(url):
 	:param url:
 	:return:
 	"""
+	browser = webdriver.Firefox()
+
+	#browser = spynner.Browser()
+	#browser.hide()
+
 	for i in xrange(10):
 		_url = url + "&s=" + str(i * 44)
 		print _url
-		pool.spawn(req_url, _url)
+		pool.spawn(req_url, _url, browser)
 		gevent.sleep(25)
+	browser.close()
 
 
-def req_url(url):
+def req_url(url, browser):
 	"""
 	请求url
 	:param url:
 	:return:
 	"""
 	try:
-		browser.load(unicode(url, "utf-8"), load_timeout=60, wait_callback=parse_html, tries=6)
+		browser.get(url)
+		content = browser.page_source
+		pool.spawn(parse_html, content)
+
+		#browser.load(unicode(url, "utf-8"), load_timeout=60)
+		#browser.wait_for_content(parse_html, tries=5, error_message=u"Timeout while loading account data")
+
 	except Exception, e:
 		logger.error("请求url异常: " + str(e), exc_info=True)
 
@@ -55,8 +71,11 @@ def parse_html(content):
 	:param content:
 	:return:
 	"""
-	h = content.html
-	if len(h) > 40:
+	h = content.decode('utf-8', 'ignore')
+
+	# h = content.html
+
+	if len(h) > 400:
 		html = etree.HTML(h)
 		items = html.xpath(u'//*[@id="mainsrp-itemlist"]//div[@class="items g-clearfix"]/div')
 		pool.map(get_field, items)
