@@ -3,7 +3,7 @@ __author__ = "chenghao"
 from gevent import monkey
 
 monkey.patch_all()
-from peewee import Model, PrimaryKeyField, CharField, FloatField, IntegerField
+from peewee import Model, PrimaryKeyField, CharField, FloatField, IntegerField, fn, Query, OP
 from playhouse.pool import PooledMySQLDatabase
 from conf import mysql_conf
 
@@ -38,6 +38,7 @@ class Goods(BaseModel):
 
 def exist_by_urlmd5(url_md5):
 	result = Goods.select(Goods.pid).where(Goods.url_md5 == url_md5)
+	print result
 	return result.exists()
 
 
@@ -45,5 +46,25 @@ def save_tb(data):
 	Goods.insert(data).execute()
 
 
+def select_goods():
+	import operator
+
+	l = [Goods.is_tmall == 1]
+	l.append(Goods.addr ** (fn.CONCAT("%"+u"广州"+"%")))
+	l.append(Goods.sale_num == 0 )
+	print l
+
+	and_conditions = reduce(operator.and_, l)
+	print and_conditions
+	print type(and_conditions)
+
+	query = Goods.select()
+	result = query.where(and_conditions | (Goods.price==69.0))
+	print result
+
+	for r in result:
+		print r.pid, r.title, r.is_tmall, r.addr
+
 if __name__ == '__main__':
-	print exist_by_urlmd5("123")
+	#print exist_by_urlmd5("123")
+	select_goods()
