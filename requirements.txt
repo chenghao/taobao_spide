@@ -1,0 +1,6 @@
+gevent
+lxml
+peewee
+selenium
+pymysql
+
